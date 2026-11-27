@@ -58,7 +58,8 @@ static int qsHexProcessHex(QxEngine& qx, const QxItem& item, char* value, size_t
     if (strcmp(item.info_type, "input.voltage") == 0 ||
         strcmp(item.info_type, "output.voltage") == 0) {
         val = (double)((raw >> 8) & 0xFF) * 2.0 + (double)(raw & 0xFF) * 0.1;
-    } else if (strcmp(item.info_type, "input.frequency") == 0) {
+    } else if (strcmp(item.info_type, "input.frequency") == 0 ||
+               strcmp(item.info_type, "output.frequency") == 0) {
         val = (double)raw / 10.0;
     } else if (strcmp(item.info_type, "battery.voltage") == 0) {
         val = (double)((raw >> 16) & 0xFF) + (double)(raw & 0xFFFF) / 10000.0;
@@ -68,24 +69,71 @@ static int qsHexProcessHex(QxEngine& qx, const QxItem& item, char* value, size_t
     return 0;
 }
 
+static int qsHexProcessStatusBits(QxEngine& qx, const QxItem& item, char* value, size_t valuelen) {
+    const char* val = qx.value();
+    if (!val || val[0] == '\0') return -1;
+
+    switch (item.from) {
+        case 38: /* Utility Fail (Immediate) */
+            if (val[0] == '1') {
+                qx.statusSet("OB");
+            } else {
+                qx.statusSet("OL");
+            }
+            break;
+        case 39: /* Battery Low */
+            if (val[0] == '1') qx.statusSet("LB");
+            break;
+        case 40: /* Bypass/Boost or Buck Active */
+            if (val[0] == '1') {
+                const char* type = qx.getInfo("ups.type");
+                if (type && strstr(type, "offline")) {
+                    qx.statusSet("BOOST");
+                } else {
+                    qx.statusSet("BYPASS");
+                }
+            }
+            break;
+        case 41: /* UPS Failed */
+            if (val[0] == '1') qx.alarmSet("UPS failed!");
+            break;
+        case 42: /* UPS Type (1 = offline / line interactive, 0 = online) */
+            snprintf(value, valuelen, "%s", val[0] == '1' ? "offline / line interactive" : "online");
+            return 0;
+        case 43: /* Test in Progress */
+            if (val[0] == '1') qx.statusSet("CAL");
+            break;
+        case 44: /* Shutdown Active */
+            if (val[0] == '1') qx.statusSet("FSD");
+            break;
+        case 45: /* Beeper On */
+            snprintf(value, valuelen, "%s", val[0] == '1' ? "enabled" : "disabled");
+            return 0;
+        default:
+            return -1;
+    }
+    return 0;
+}
+
 static const QxItem VOLTRONIC_QS_HEX_QX2NUT[] = {
     // Decoded: #6f01 6c 6f01 6c 1a 5fe1 1312d0 e3 1e 00001000
     //          0123456789012345678901234567890123456789012345
-    { "input.voltage",   0, nullptr, "QS\r", 27, '#', 1,  4,  "%.1f", 0, nullptr, qsHexPreprocessAnswer, qsHexProcessHex },
-    { "output.voltage",  0, nullptr, "QS\r", 27, '#', 9,  12, "%.1f", 0, nullptr, qsHexPreprocessAnswer, qsHexProcessHex },
-    { "ups.load",        0, nullptr, "QS\r", 27, '#', 17, 18, "%.0f", 0, nullptr, qsHexPreprocessAnswer, qsHexProcessHex },
-    { "battery.voltage", 0, nullptr, "QS\r", 27, '#', 25, 30, "%.2f", 0, nullptr, qsHexPreprocessAnswer, qsHexProcessHex },
-    { "ups.temperature", 0, nullptr, "QS\r", 27, '#', 32, 33, "%.1f", 0, nullptr, qsHexPreprocessAnswer, qsHexProcessHex },
+    { "input.voltage",    0, nullptr, "QS\r", 27, '#', 1,  4,  "%.1f", 0, nullptr, qsHexPreprocessAnswer, qsHexProcessHex },
+    { "output.voltage",   0, nullptr, "QS\r", 27, '#', 9,  12, "%.1f", 0, nullptr, qsHexPreprocessAnswer, qsHexProcessHex },
+    { "ups.load",         0, nullptr, "QS\r", 27, '#', 17, 18, "%.0f", 0, nullptr, qsHexPreprocessAnswer, qsHexProcessHex },
+    { "output.frequency", 0, nullptr, "QS\r", 27, '#', 20, 23, "%.1f", 0, nullptr, qsHexPreprocessAnswer, qsHexProcessHex },
+    { "battery.voltage",  0, nullptr, "QS\r", 27, '#', 25, 30, "%.2f", 0, nullptr, qsHexPreprocessAnswer, qsHexProcessHex },
+    { "ups.temperature",  0, nullptr, "QS\r", 27, '#', 32, 33, "%.1f", 0, nullptr, qsHexPreprocessAnswer, qsHexProcessHex },
 
     /* Status bits (positions 38..45 in decoded string) */
-    { "ups.status",        0, nullptr, "QS\r", 27, '#', 38, 38, nullptr, QX_FLAG_QUICK_POLL, nullptr, qsHexPreprocessAnswer, blazerProcessStatusBits },
-    { "ups.status",        0, nullptr, "QS\r", 27, '#', 39, 39, nullptr, QX_FLAG_QUICK_POLL, nullptr, qsHexPreprocessAnswer, blazerProcessStatusBits },
-    { "ups.status",        0, nullptr, "QS\r", 27, '#', 40, 40, nullptr, QX_FLAG_QUICK_POLL, nullptr, qsHexPreprocessAnswer, blazerProcessStatusBits },
-    { "ups.alarm",         0, nullptr, "QS\r", 27, '#', 41, 41, nullptr, 0,                  nullptr, qsHexPreprocessAnswer, blazerProcessStatusBits },
-    { "ups.type",          0, nullptr, "QS\r", 27, '#', 42, 42, "%s",    QX_FLAG_STATIC,     nullptr, qsHexPreprocessAnswer, blazerProcessStatusBits },
-    { "ups.status",        0, nullptr, "QS\r", 27, '#', 43, 43, nullptr, QX_FLAG_QUICK_POLL, nullptr, qsHexPreprocessAnswer, blazerProcessStatusBits },
-    { "ups.status",        0, nullptr, "QS\r", 27, '#', 44, 44, nullptr, QX_FLAG_QUICK_POLL, nullptr, qsHexPreprocessAnswer, blazerProcessStatusBits },
-    { "ups.beeper.status", 0, nullptr, "QS\r", 27, '#', 45, 45, "%s",    0,                  nullptr, qsHexPreprocessAnswer, blazerProcessStatusBits },
+    { "ups.status",        0, nullptr, "QS\r", 27, '#', 38, 38, nullptr, QX_FLAG_QUICK_POLL, nullptr, qsHexPreprocessAnswer, qsHexProcessStatusBits },
+    { "ups.status",        0, nullptr, "QS\r", 27, '#', 39, 39, nullptr, QX_FLAG_QUICK_POLL, nullptr, qsHexPreprocessAnswer, qsHexProcessStatusBits },
+    { "ups.status",        0, nullptr, "QS\r", 27, '#', 40, 40, nullptr, QX_FLAG_QUICK_POLL, nullptr, qsHexPreprocessAnswer, qsHexProcessStatusBits },
+    { "ups.alarm",         0, nullptr, "QS\r", 27, '#', 41, 41, nullptr, 0,                  nullptr, qsHexPreprocessAnswer, qsHexProcessStatusBits },
+    { "ups.type",          0, nullptr, "QS\r", 27, '#', 42, 42, "%s",    QX_FLAG_STATIC,     nullptr, qsHexPreprocessAnswer, qsHexProcessStatusBits },
+    { "ups.status",        0, nullptr, "QS\r", 27, '#', 43, 43, nullptr, QX_FLAG_QUICK_POLL, nullptr, qsHexPreprocessAnswer, qsHexProcessStatusBits },
+    { "ups.status",        0, nullptr, "QS\r", 27, '#', 44, 44, nullptr, QX_FLAG_QUICK_POLL, nullptr, qsHexPreprocessAnswer, qsHexProcessStatusBits },
+    { "ups.beeper.status", 0, nullptr, "QS\r", 27, '#', 45, 45, "%s",    0,                  nullptr, qsHexPreprocessAnswer, qsHexProcessStatusBits },
 
     /* End of structure. */
     { nullptr, 0, nullptr, nullptr, 0, 0, 0, 0, nullptr, 0, nullptr, nullptr, nullptr }
