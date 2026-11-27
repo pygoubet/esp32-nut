@@ -17,8 +17,9 @@
 #include <string.h>
 
 /* Preprocess the raw binary QS\r answer into the ASCII hex/bitstring format:
- * Raw:  23 <2B> 20 <1B> 20 <2B> 20 <1B> 20 <1B> 20 <2B> 20 <3B> 20 <1B> 20 <1B> 20 <1B> 0D
- * Text: #XXXX XX XXXX XX XX XXXX XXXXXX XX XX BBBBBBBB
+ * Raw (P): # <AB:2B> ' ' <C:1B> ' ' <DE:2B> ' ' <F:1B> ' ' <G:1B> ' ' <HI:2B> ' ' <JKL:3B> ' ' <M:1B> ' ' <N:1B> ' ' <O:1B> \r
+ * Escape sequences in raw bytes: 0x28 0x00->0x0D, 0x28 0x01->0x11, 0x28 0x02->0x13, 0x28 0x03->0x0A, 0x28 0x04->0x20
+ * Decoded text: #XXXX XX XXXX XX XX XXXX XXXXXX XX XX BBBBBBBB
  */
 static int qsHexPreprocessAnswer(QxEngine& qx, const QxItem& item, int len) {
     (void)item;
@@ -26,21 +27,36 @@ static int qsHexPreprocessAnswer(QxEngine& qx, const QxItem& item, int len) {
     if (len < 27 || ans[0] != '#') return -1;
 
     const uint8_t* raw = reinterpret_cast<const uint8_t*>(ans);
+    uint8_t unescaped[32];
+    int ulen = 0;
+
+    for (int i = 0; i < len && ulen < (int)sizeof(unescaped); i++) {
+        if (raw[i] == 0x28 && i + 1 < len && raw[i + 1] <= 0x04) {
+            static const uint8_t map[5] = { 0x0D, 0x11, 0x13, 0x0A, 0x20 };
+            unescaped[ulen++] = map[raw[i + 1]];
+            i++;
+        } else {
+            unescaped[ulen++] = raw[i];
+        }
+    }
+
+    if (ulen < 26 || unescaped[0] != '#') return -1;
+
     char decoded[64];
     int pos = 0;
 
     decoded[pos++] = '#';
-    pos += snprintf(decoded + pos, sizeof(decoded) - pos, "%02x%02x ", raw[1], raw[2]);
-    pos += snprintf(decoded + pos, sizeof(decoded) - pos, "%02x ", raw[4]);
-    pos += snprintf(decoded + pos, sizeof(decoded) - pos, "%02x%02x ", raw[6], raw[7]);
-    pos += snprintf(decoded + pos, sizeof(decoded) - pos, "%02x ", raw[9]);
-    pos += snprintf(decoded + pos, sizeof(decoded) - pos, "%02x ", raw[11]);
-    pos += snprintf(decoded + pos, sizeof(decoded) - pos, "%02x%02x ", raw[13], raw[14]);
-    pos += snprintf(decoded + pos, sizeof(decoded) - pos, "%02x%02x%02x ", raw[16] & 0x1F, raw[17], raw[18]);
-    pos += snprintf(decoded + pos, sizeof(decoded) - pos, "%02x ", raw[20]);
-    pos += snprintf(decoded + pos, sizeof(decoded) - pos, "%02x ", raw[22]);
+    pos += snprintf(decoded + pos, sizeof(decoded) - pos, "%02x%02x ", unescaped[1], unescaped[2]);     // AB (1..4)
+    pos += snprintf(decoded + pos, sizeof(decoded) - pos, "%02x ", unescaped[4]);                       // C  (6..7)
+    pos += snprintf(decoded + pos, sizeof(decoded) - pos, "%02x%02x ", unescaped[6], unescaped[7]);     // DE (9..12)
+    pos += snprintf(decoded + pos, sizeof(decoded) - pos, "%02x ", unescaped[9]);                       // F  (14..15)
+    pos += snprintf(decoded + pos, sizeof(decoded) - pos, "%02x ", unescaped[11]);                      // G  (17..18)
+    pos += snprintf(decoded + pos, sizeof(decoded) - pos, "%02x%02x ", unescaped[13], unescaped[14]);   // HI (20..23)
+    pos += snprintf(decoded + pos, sizeof(decoded) - pos, "%02x%02x%02x ", unescaped[16], unescaped[17], unescaped[18]); // JKL (25..30)
+    pos += snprintf(decoded + pos, sizeof(decoded) - pos, "%02x ", unescaped[20]);                      // M  (32..33)
+    pos += snprintf(decoded + pos, sizeof(decoded) - pos, "%02x ", unescaped[22]);                      // N  (35..36)
 
-    uint8_t st = raw[24];
+    uint8_t st = unescaped[24]; // O (38..45)
     for (int b = 7; b >= 0; b--) {
         decoded[pos++] = (st & (1U << b)) ? '1' : '0';
     }
@@ -52,17 +68,34 @@ static int qsHexPreprocessAnswer(QxEngine& qx, const QxItem& item, int len) {
 }
 
 static int qsHexProcessHex(QxEngine& qx, const QxItem& item, char* value, size_t valuelen) {
-    unsigned long raw = strtoul(qx.value(), nullptr, 16);
-    double val = (double)raw;
+    const char* ans = qx.answer();
+    double val = 0.0;
 
-    if (strcmp(item.info_type, "input.voltage") == 0 ||
-        strcmp(item.info_type, "output.voltage") == 0) {
-        val = (double)((raw >> 8) & 0xFF) * 2.0 + (double)(raw & 0xFF) * 0.1;
-    } else if (strcmp(item.info_type, "input.frequency") == 0 ||
-               strcmp(item.info_type, "output.frequency") == 0) {
-        val = (double)raw / 10.0;
+    if (strcmp(item.info_type, "input.voltage") == 0) {
+        // AB * C / 51 / 256
+        unsigned long ab = strtoul(ans + 1, nullptr, 16);
+        unsigned long c  = strtoul(ans + 6, nullptr, 16);
+        val = (double)ab * (double)c / 51.0 / 256.0;
+    } else if (strcmp(item.info_type, "output.voltage") == 0) {
+        // DE * F / 51 / 256
+        unsigned long de = strtoul(ans + 9, nullptr, 16);
+        unsigned long f  = strtoul(ans + 14, nullptr, 16);
+        val = (double)de * (double)f / 51.0 / 256.0;
+    } else if (strcmp(item.info_type, "ups.load") == 0) {
+        // G
+        unsigned long g = strtoul(qx.value(), nullptr, 16);
+        val = (double)g;
+    } else if (strcmp(item.info_type, "output.frequency") == 0) {
+        // JKL / HI
+        unsigned long hi  = strtoul(ans + 20, nullptr, 16);
+        unsigned long jkl = strtoul(ans + 25, nullptr, 16);
+        val = (hi > 0) ? ((double)jkl / (double)hi) : 0.0;
+        if (val > 99.9) val = 99.9;
     } else if (strcmp(item.info_type, "battery.voltage") == 0) {
-        val = (double)((raw >> 16) & 0xFF) + (double)(raw & 0xFFFF) / 10000.0;
+        // M * N / 510
+        unsigned long m = strtoul(ans + 32, nullptr, 16);
+        unsigned long n = strtoul(ans + 35, nullptr, 16);
+        val = (double)m * (double)n / 510.0;
     }
 
     snprintf(value, valuelen, item.dfl ? item.dfl : "%.1f", val);
@@ -116,14 +149,13 @@ static int qsHexProcessStatusBits(QxEngine& qx, const QxItem& item, char* value,
 }
 
 static const QxItem VOLTRONIC_QS_HEX_QX2NUT[] = {
-    // Decoded: #6f01 6c 6f01 6c 1a 5fe1 1312d0 e3 1e 00001000
+    // Decoded: #XXXX XX XXXX XX XX XXXX XXXXXX XX XX BBBBBBBB
     //          0123456789012345678901234567890123456789012345
     { "input.voltage",    0, nullptr, "QS\r", 27, '#', 1,  4,  "%.1f", 0, nullptr, qsHexPreprocessAnswer, qsHexProcessHex },
     { "output.voltage",   0, nullptr, "QS\r", 27, '#', 9,  12, "%.1f", 0, nullptr, qsHexPreprocessAnswer, qsHexProcessHex },
     { "ups.load",         0, nullptr, "QS\r", 27, '#', 17, 18, "%.0f", 0, nullptr, qsHexPreprocessAnswer, qsHexProcessHex },
     { "output.frequency", 0, nullptr, "QS\r", 27, '#', 20, 23, "%.1f", 0, nullptr, qsHexPreprocessAnswer, qsHexProcessHex },
-    { "battery.voltage",  0, nullptr, "QS\r", 27, '#', 25, 30, "%.2f", 0, nullptr, qsHexPreprocessAnswer, qsHexProcessHex },
-    { "ups.temperature",  0, nullptr, "QS\r", 27, '#', 32, 33, "%.1f", 0, nullptr, qsHexPreprocessAnswer, qsHexProcessHex },
+    { "battery.voltage",  0, nullptr, "QS\r", 27, '#', 32, 33, "%.2f", 0, nullptr, qsHexPreprocessAnswer, qsHexProcessHex },
 
     /* Status bits (positions 38..45 in decoded string) */
     { "ups.status",        0, nullptr, "QS\r", 27, '#', 38, 38, nullptr, QX_FLAG_QUICK_POLL, nullptr, qsHexPreprocessAnswer, qsHexProcessStatusBits },
