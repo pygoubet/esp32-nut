@@ -92,13 +92,9 @@ static const QxItem VOLTRONIC_QS_HEX_QX2NUT[] = {
     { nullptr, 0, nullptr, nullptr, 0, 0, 0, 0, nullptr, 0, nullptr, nullptr, nullptr }
 };
 
-static bool qsHexClaim(QxEngine& qx) {
-    return qx.claim("QS\r", 27, '#');
-}
-
 const QxSubdriver QX_VOLTRONIC_QS_HEX = {
     "Voltronic-QS-Hex 0.10",
-    qsHexClaim,
+    blazerClaimLight,
     VOLTRONIC_QS_HEX_QX2NUT,
     blazerInitupsLight,
     nullptr,
