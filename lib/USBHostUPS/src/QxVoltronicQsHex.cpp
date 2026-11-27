@@ -135,6 +135,14 @@ static const QxItem VOLTRONIC_QS_HEX_QX2NUT[] = {
     { "ups.status",        0, nullptr, "QS\r", 27, '#', 44, 44, nullptr, QX_FLAG_QUICK_POLL, nullptr, qsHexPreprocessAnswer, qsHexProcessStatusBits },
     { "ups.beeper.status", 0, nullptr, "QS\r", 27, '#', 45, 45, "%s",    0,                  nullptr, qsHexPreprocessAnswer, qsHexProcessStatusBits },
 
+    /* Instant commands */
+    { "beeper.toggle",    0, nullptr, "Q\r",        0, 0, 0, 0, nullptr, QX_FLAG_CMD, nullptr, nullptr, blazerProcessCommand },
+    { "load.off",         0, nullptr, "S00R0000\r", 0, 0, 0, 0, nullptr, QX_FLAG_CMD, nullptr, nullptr, blazerProcessCommand },
+    { "load.on",          0, nullptr, "C\r",        0, 0, 0, 0, nullptr, QX_FLAG_CMD, nullptr, nullptr, blazerProcessCommand },
+    { "shutdown.return",  0, nullptr, "S%s\r",      0, 0, 0, 0, nullptr, QX_FLAG_CMD, nullptr, nullptr, blazerProcessCommand },
+    { "shutdown.stayoff", 0, nullptr, "S%sR0000\r", 0, 0, 0, 0, nullptr, QX_FLAG_CMD, nullptr, nullptr, blazerProcessCommand },
+    { "shutdown.stop",    0, nullptr, "C\r",        0, 0, 0, 0, nullptr, QX_FLAG_CMD, nullptr, nullptr, blazerProcessCommand },
+
     /* End of structure. */
     { nullptr, 0, nullptr, nullptr, 0, 0, 0, 0, nullptr, 0, nullptr, nullptr, nullptr }
 };
