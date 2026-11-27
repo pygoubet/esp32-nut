@@ -76,21 +76,21 @@ static int qsHexProcessStatusBits(QxEngine& qx, const QxItem& item, char* value,
     switch (item.from) {
         case 38: /* Utility Fail (Immediate) */
             if (val[0] == '1') {
-                qx.statusSet("OB");
+                qx.updateStatus("OB");
             } else {
-                qx.statusSet("OL");
+                qx.updateStatus("OL");
             }
             break;
         case 39: /* Battery Low */
-            if (val[0] == '1') qx.statusSet("LB");
+            if (val[0] == '1') qx.updateStatus("LB");
             break;
         case 40: /* Bypass/Boost or Buck Active */
             if (val[0] == '1') {
-                const char* type = qx.getInfo("ups.type");
+                const char* type = qx.getinfo("ups.type");
                 if (type && strstr(type, "offline")) {
-                    qx.statusSet("BOOST");
+                    qx.updateStatus("BOOST");
                 } else {
-                    qx.statusSet("BYPASS");
+                    qx.updateStatus("BYPASS");
                 }
             }
             break;
@@ -101,10 +101,10 @@ static int qsHexProcessStatusBits(QxEngine& qx, const QxItem& item, char* value,
             snprintf(value, valuelen, "%s", val[0] == '1' ? "offline / line interactive" : "online");
             return 0;
         case 43: /* Test in Progress */
-            if (val[0] == '1') qx.statusSet("CAL");
+            if (val[0] == '1') qx.updateStatus("CAL");
             break;
         case 44: /* Shutdown Active */
-            if (val[0] == '1') qx.statusSet("FSD");
+            if (val[0] == '1') qx.updateStatus("FSD");
             break;
         case 45: /* Beeper On */
             snprintf(value, valuelen, "%s", val[0] == '1' ? "enabled" : "disabled");
