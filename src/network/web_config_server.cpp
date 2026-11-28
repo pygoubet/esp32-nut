@@ -6,6 +6,8 @@
 #include "UpsCommands.h"
 #include "BoardTime.h"
 #include "network/web_config_server.h"
+#include "network/notifications_notifier.h"
+#include "network/smtp_notifier.h"
 #include <ArduinoJson.h>
 #include "core/app_logger.h"
 #include "core/crash_diag.h"
@@ -128,6 +130,9 @@ void WebConfigServer::begin(bool isAPMode) {
     server.on("/api/logging", HTTP_POST, guarded([this]() { handleSetLogging(); }));
     server.on("/api/time", HTTP_GET, guarded([this]() { handleGetTime(); }));
     server.on("/api/time", HTTP_POST, guarded([this]() { handleSetTime(); }));
+    server.on("/api/notifications", HTTP_GET, guarded([this]() { handleGetNotifications(); }));
+    server.on("/api/notifications", HTTP_POST, guarded([this]() { handleSetNotifications(); }));
+    server.on("/api/notifications/smtptest", HTTP_POST, guarded([this]() { handleNotificationsTestSmtp(); }));
     server.on("/api/logs", HTTP_GET, guarded([this]() { handleLogs(); }));
     server.on("/api/config", HTTP_GET, guarded([this]() { handleGetConfig(); }));
     server.on("/api/ups-vars", HTTP_GET, guarded([this]() { handleUpsVars(); }));
@@ -709,6 +714,61 @@ void WebConfigServer::handleSetTime() {
     String who = webUiUser();
     ntp_clock->configure(next, who.length() > 0 ? who : String("Web UI"));
     server.send(200, "application/json", "{\"success\":true}");
+}
+
+void WebConfigServer::handleGetNotifications() {
+    NotificationsSettings s = notifications_settings_store.load();
+    JsonDocument doc;
+    doc["on_battery"] = s.on_battery;
+    doc["back_online"] = s.back_online;
+    doc["on_startup"] = s.on_startup;
+    doc["smtp_enabled"] = s.smtp_enabled;
+    doc["smtp_server"] = s.smtp_server;
+    doc["smtp_port"] = s.smtp_port;
+    doc["smtp_tls"] = s.smtp_tls;
+    doc["smtp_username"] = s.smtp_username;
+    doc["smtp_password"] = s.smtp_password;
+    doc["smtp_email_from"] = s.smtp_email_from;
+    doc["smtp_email_to"] = s.smtp_email_to;
+    String body;
+    serializeJson(doc, body);
+    server.sendHeader("Cache-Control", "no-store");
+    server.send(200, "application/json", body);
+}
+
+void WebConfigServer::handleSetNotifications() {
+    if (!requireJson()) return;
+    JsonDocument doc;
+    if (!server.hasArg("plain") || deserializeJson(doc, server.arg("plain"))) {
+        server.send(400, "application/json", "{\"error\":\"Invalid request\"}");
+        return;
+    }
+    NotificationsSettings s;
+    s.on_battery = doc["on_battery"] | false;
+    s.back_online = doc["back_online"] | false;
+    s.on_startup = doc["on_startup"] | false;
+    s.smtp_enabled = doc["smtp_enabled"] | false;
+    s.smtp_server = doc["smtp_server"] | "";
+    s.smtp_port = doc["smtp_port"] | 465;
+    s.smtp_tls = doc["smtp_tls"] | true;
+    s.smtp_username = doc["smtp_username"] | "";
+    s.smtp_password = doc["smtp_password"] | "";
+    s.smtp_email_from = doc["smtp_email_from"] | "";
+    s.smtp_email_to = doc["smtp_email_to"] | "";
+    if (!notifications_settings_store.save(s)) {
+        server.send(500, "application/json", "{\"error\":\"Failed to save settings\"}");
+        return;
+    }
+    server.send(200, "application/json", "{\"success\":true}");
+}
+
+void WebConfigServer::handleNotificationsTestSmtp() {
+    NotificationsSettings s = notifications_settings_store.load();
+    if (s.smtp_server.isEmpty() || s.smtp_email_from.isEmpty() || s.smtp_email_to.isEmpty()) {
+        server.send(400, "application/json", "{\"error\":\"SMTP server, sender, and recipient are required\"}"); return;
+    }
+    SmtpNotifier::sendAsync(s, "ESP32-NUT SMTP Test Email", "This is a test email from ESP32-NUT.");
+    server.send(202, "application/json", "{\"success\":true}");
 }
 
 void WebConfigServer::openRecoveryWindow(uint32_t now) {

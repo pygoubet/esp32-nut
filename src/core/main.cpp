@@ -22,6 +22,8 @@
 #include "network/syslog_output.h"
 #include "network/ntp_clock.h"
 #include "core/time_settings_store.h"
+#include "core/notifications_settings_store.h"
+#include "network/smtp_notifier.h"
 
 USBHostUPS usb_ups;
 ConfigManager config_mgr;
@@ -49,6 +51,7 @@ static LogDispatcher log_dispatcher;
 static UpdateService update_service;
 static SyslogOutput syslog_output;
 static LogSettingsStore log_settings_store;
+static NotificationsSettingsStore notifications_settings_store;
 
 // Network time and time zone of Board Settings (US-117, ADR 0009), NVS "time"
 static TimeSettingsStore time_settings_store;
@@ -355,6 +358,46 @@ void loop() {
     web_server.loop();
     network_mgr.loop();
     ntp_clock.poll(now);
+
+    // Startup alert is sent only after the active network link is ready.
+    static bool startup_notification_checked = false;
+    if (!startup_notification_checked && network_mgr.isConnected()) {
+        startup_notification_checked = true;
+        NotificationsSettings ns = notifications_settings_store.load();
+        if (ns.smtp_enabled && ns.on_startup) {
+            const String subject="ESP32-NUT started", body="The ESP32-NUT UPS monitor has started and network connectivity is ready.";
+            SmtpNotifier::sendAsync(ns,subject,body);
+        }
+    }
+
+    // Notify only on a change between known UPS line-power states.
+    static String previous_power_state;
+    if (usb_ups.isConnected() && !usb_ups.isDataStale()) {
+        String ups_status = usb_ups.getUPSStatusString();
+        bool on_battery = ups_status.indexOf("OB") >= 0;
+        bool online = ups_status.indexOf("OL") >= 0;
+        String current_power_state = on_battery ? "OB" : (online ? "OL" : "");
+        if (current_power_state.length() > 0 && previous_power_state.length() > 0 &&
+            current_power_state != previous_power_state && network_mgr.isConnected()) {
+            NotificationsSettings ns = notifications_settings_store.load();
+            String subject, body;
+            bool selected=false;
+            if (current_power_state == "OB" && ns.on_battery) {
+                subject="UPS power lost";
+                body="The UPS is running on battery power.";
+                selected=true;
+            }
+            else if (current_power_state == "OL" && ns.back_online) {
+                subject="UPS power restored";
+                body="The UPS has returned to line power.";
+                selected=true;
+            }
+            if (selected && ns.smtp_enabled) {
+                SmtpNotifier::sendAsync(ns,subject,body);
+            }
+        }
+        if (current_power_state.length() > 0) previous_power_state = current_power_state;
+    }
 
     // Before the early return for an invalid config (the timer is disabled there anyway)
     if (ap_timeout.isEnabled()) {

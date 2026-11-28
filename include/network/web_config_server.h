@@ -25,6 +25,7 @@
 #include "network/syslog_output.h"
 #include "core/update_service.h"
 #include "core/log_settings_store.h"
+#include "core/notifications_settings_store.h"
 #include "core/time_settings_store.h"
 #include "network/ntp_clock.h"
 
@@ -105,6 +106,10 @@ private:
     NtpClock* ntp_clock = nullptr;
     void handleGetTime();
     void handleSetTime();
+    NotificationsSettingsStore notifications_settings_store;
+    void handleGetNotifications();
+    void handleSetNotifications();
+    void handleNotificationsTestSmtp();
 
     void handleConnect();
     void handleLogs();

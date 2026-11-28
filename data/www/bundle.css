@@ -3692,3 +3692,17 @@ body.auth-page {
     .metric-card .metric-label.tm-label-row { padding-right: 4.2rem; }
     .metric-card .metric-label.tm-label-row.no-mark { padding-right: 0; }
 }
+
+/* SMTP notification settings layout */
+/* Keep the SMTP connection settings together; constrain the hostname field. */
+        .smtp-fields {
+            grid-template-columns: minmax(0, 2fr) minmax(0, 0.7fr) minmax(0, 0.55fr);
+        }
+        .smtp-server-field .set-field {
+            max-width: 25rem;
+        }
+        @media (max-width: 768px) {
+            .smtp-fields {
+                grid-template-columns: 1fr;
+            }
+        }

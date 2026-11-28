@@ -4679,6 +4679,174 @@ document.addEventListener('DOMContentLoaded', () => {
         }, TIME_POLL_MS);
     }
 
+    // Notifications settings and SMTP test email
+    const notificationsSection = document.getElementById('content-notifications');
+    if (notificationsSection) {
+        const N = (id) => document.getElementById(id);
+        const notificationIds = [
+            'notifications-on-battery', 'notifications-on-battery-state',
+            'notifications-back-online', 'notifications-back-online-state',
+            'notifications-startup', 'notifications-startup-state',
+            'smtp-enabled', 'smtp-enabled-state', 'smtp-server', 'smtp-port',
+            'smtp-tls', 'smtp-username', 'smtp-password', 'smtp-email-from',
+            'smtp-email-to', 'btn-save-notifications', 'btn-test-smtp', 'notifications-status'
+        ];
+        if (notificationIds.every(id => N(id))) {
+            const result = N('notifications-status');
+            const btnSave = N('btn-save-notifications');
+            const btnTest = N('btn-test-smtp');
+            const notificationFields = [
+                'notifications-on-battery', 'notifications-back-online', 'notifications-startup',
+                'smtp-enabled', 'smtp-server', 'smtp-port', 'smtp-tls', 'smtp-username',
+                'smtp-password', 'smtp-email-from', 'smtp-email-to'
+            ];
+            let notificationDirty = false;
+            let notificationSaving = false;
+
+            function setNotificationResult(message, success) {
+                result.textContent = message;
+                result.className = success ? 'cmd-result success' : 'cmd-result';
+            }
+
+            function renderNotificationSwitch(id, value) {
+                N(id).checked = value === true;
+                N(id + '-state').textContent = value === true ? 'On' : 'Off';
+            }
+
+            async function loadNotifications() {
+                if (sessionExpired) return;
+                try {
+                    const response = await apiFetch('/api/notifications', { cache: 'no-store' });
+                    if (response.status === 401) return;
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const data = await response.json();
+                    if (!data || typeof data !== 'object' || notificationDirty || notificationSaving) return;
+                    renderNotificationSwitch('notifications-on-battery', data.on_battery);
+                    renderNotificationSwitch('notifications-back-online', data.back_online);
+                    renderNotificationSwitch('notifications-startup', data.on_startup);
+                    renderNotificationSwitch('smtp-enabled', data.smtp_enabled);
+                    N('smtp-server').value = data.smtp_server || '';
+                    N('smtp-port').value = data.smtp_port == null ? '465' : String(data.smtp_port);
+                    N('smtp-tls').checked = data.smtp_tls !== false;
+                    N('smtp-username').value = data.smtp_username || '';
+                    N('smtp-password').value = data.smtp_password || '';
+                    N('smtp-email-from').value = data.smtp_email_from || '';
+                    N('smtp-email-to').value = data.smtp_email_to || '';
+                } catch (error) {
+                    console.error('Failed to fetch notification settings:', error);
+                    setNotificationResult('Could not load notification settings.', false);
+                }
+            }
+
+            function notificationPayload() {
+                const portText = N('smtp-port').value.trim();
+                const smtpPort = Number(portText);
+                if (!/^\d+$/.test(portText) || !Number.isInteger(smtpPort) || smtpPort < 1 || smtpPort > 65535) {
+                    setNotificationResult('Enter a valid SMTP port (1–65535).', false);
+                    N('smtp-port').focus();
+                    return null;
+                }
+                const onBattery = N('notifications-on-battery').checked;
+                const backOnline = N('notifications-back-online').checked;
+                const onStartup = N('notifications-startup').checked;
+                return {
+                    on_battery: onBattery,
+                    back_online: backOnline,
+                    on_startup: onStartup,
+                    smtp_enabled: N('smtp-enabled').checked,
+                    smtp_server: N('smtp-server').value.trim(),
+                    smtp_port: smtpPort,
+                    smtp_tls: N('smtp-tls').checked,
+                    smtp_username: N('smtp-username').value.trim(),
+                    smtp_password: N('smtp-password').value,
+                    smtp_email_from: N('smtp-email-from').value.trim(),
+                    smtp_email_to: N('smtp-email-to').value.trim()
+                };
+            }
+
+            async function saveNotifications(event) {
+                if (event) event.preventDefault();
+                if (notificationSaving) return false;
+                const payload = notificationPayload();
+                if (!payload) return false;
+                notificationSaving = true;
+                btnSave.disabled = true;
+                setNotificationResult('Saving…', false);
+                let saved = false;
+                try {
+                    const response = await apiFetch('/api/notifications', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (response.status === 401) return false;
+                    let data = null;
+                    try { data = await response.json(); } catch (error) { data = null; }
+                    if (!response.ok || !data || data.success !== true) {
+                        setNotificationResult(data && data.error ? data.error : `Save failed (HTTP ${response.status}).`, false);
+                        return false;
+                    }
+                    notificationDirty = false;
+                    saved = true;
+                    setNotificationResult('✓ Notification settings saved.', true);
+                } catch (error) {
+                    console.error('Notification settings save error:', error);
+                    setNotificationResult('Network error while saving notification settings.', false);
+                } finally {
+                    notificationSaving = false;
+                    btnSave.disabled = false;
+                }
+                return saved;
+            }
+
+            async function testSmtp() {
+                if (btnTest.disabled) return;
+                // The test endpoint reads persisted settings, so save pending edits first.
+                if (notificationDirty && !(await saveNotifications())) return;
+                btnTest.disabled = true;
+                setNotificationResult('Sending SMTP test email…', false);
+                try {
+                    const response = await apiFetch('/api/notifications/smtptest', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: '{}'
+                    });
+                    if (response.status === 401) return;
+                    let data = null;
+                    try { data = await response.json(); } catch (error) { data = null; }
+                    if (response.status === 202 && data && data.success === true) {
+                        setNotificationResult('✓ SMTP test email queued.', true);
+                    } else {
+                        setNotificationResult(data && data.error ? data.error : `SMTP test failed (HTTP ${response.status}).`, false);
+                    }
+                } catch (error) {
+                    console.error('SMTP test request error:', error);
+                    setNotificationResult('Network error while sending SMTP test email.', false);
+                } finally {
+                    btnTest.disabled = false;
+                }
+            }
+
+            notificationFields.forEach(id => {
+                const field = N(id);
+                field.addEventListener(field.type === 'checkbox' ? 'change' : 'input', () => {
+                    notificationDirty = true;
+                    setNotificationResult('', false);
+                    if (id === 'notifications-on-battery' || id === 'notifications-back-online' ||
+                        id === 'notifications-startup' || id === 'smtp-enabled') {
+                        N(id + '-state').textContent = field.checked ? 'On' : 'Off';
+                    }
+                });
+            });
+            btnSave.addEventListener('click', saveNotifications);
+            btnTest.addEventListener('click', testSmtp);
+            tabs.forEach(tab => tab.addEventListener('click', () => {
+                if (tab.getAttribute('data-target') === 'notifications') loadNotifications();
+            }));
+            if (activeTab && activeTab.getAttribute('data-target') === 'notifications') loadNotifications();
+        }
+    }
+
     // US-061 Log out (this session) and US-062 Log out of all devices: same
     // flow, different endpoint. Both buttons live in the session row, so they
     // share its visibility (hidden in AP mode and without a session).

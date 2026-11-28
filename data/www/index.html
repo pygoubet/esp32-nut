@@ -8,9 +8,8 @@
     <link rel="icon" type="image/x-icon" href="favicon.ico">
 
 
-
-
     <link rel="stylesheet" href="bundle.css?v=1.2.0">
+    
 </head>
 
 <body>
@@ -86,6 +85,13 @@
                         <circle cx="16.5" cy="7.5" r=".5" fill="currentColor" />
                     </svg>
                     Web Login
+                </button>
+                <button class="tab" data-target="notifications">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                    </svg>
+                    Notifications
                 </button>
                 <button class="tab" data-target="logs">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1385,6 +1391,119 @@
                 </div>
             </div>
 
+            <div class="tab-content" id="content-notifications">
+                <div class="panel config-panel events-panel">
+                    <div class="panel-header">
+                        <h2>Events to notify on</h2>
+                    </div>
+                    <div class="board-row" id="row-onbattery">
+                        <div class="board-label">
+                            <span class="board-name">On battery</span>
+                            <span class="board-hint">When the power is lost and the UPS runs on battery (ups.status=OB)</span>
+                        </div>
+                        <div class="board-control led-toggle">
+                            <label class="switch">
+                                <input type="checkbox" id="notifications-on-battery" aria-label="Notify OB">
+                                <span class="slider"></span>
+                            </label>
+                            <span class="led-state" id="notifications-on-battery-state">Off</span>
+                        </div>
+                    </div>
+                    <div class="board-row" id="row-back-online">
+                        <div class="board-label">
+                            <span class="board-name">Back online</span>
+                            <span class="board-hint">When the power is back and the UPS runs online (ups.status=OL)</span>
+                        </div>
+                        <div class="board-control led-toggle">
+                            <label class="switch">
+                                <input type="checkbox" id="notifications-back-online" aria-label="Notify back OL">
+                                <span class="slider"></span>
+                            </label>
+                            <span class="led-state" id="notifications-back-online-state">Off</span>
+                        </div>
+                    </div>
+                    <div class="board-row" id="row-startup">
+                        <div class="board-label">
+                            <span class="board-name">Start up</span>
+                            <span class="board-hint">When esp32-nut starts. Can be useful if the battery get empty and esp32-nut was powered off.</span>
+                        </div>
+                        <div class="board-control led-toggle">
+                            <label class="switch">
+                                <input type="checkbox" id="notifications-startup" aria-label="Notify start up">
+                                <span class="slider"></span>
+                            </label>
+                            <span class="led-state" id="notifications-startup-state">Off</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="panel config-panel events-panel">
+                    <div class="panel-header">
+                        <h2>Notify by email</h2>
+                    </div>
+                    <div class="board-row" id="row-smtp-enabled">
+                        <div class="board-label">
+                            <span class="board-name">Enable SMTP notifications</span>
+                        </div>
+                        <div class="board-control led-toggle">
+                            <label class="switch">
+                                <input type="checkbox" id="smtp-enabled">
+                                <span class="slider"></span>
+                            </label>
+                            <span class="led-state" id="smtp-enabled-state">Off</span>
+                        </div>
+                    </div>
+                    <div class="rlog-fields smtp-fields">
+                        <div class="form-group smtp-server-field">
+                            <label for="smtp-server">SMTP Server</label>
+                            <div class="set-field" id="f-server">
+                                <input type="text" id="smtp-server" autocomplete="off"
+                                    spellcheck="false" placeholder="mail.example.com">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="smtp-port">Port</label>
+                            <div class="set-field" id="f-smtp-port">
+                                <input type="text" id="smtp-port" inputmode="numeric" maxlength="5"
+                                    placeholder="465" value="465">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="smtp-tls">TLS</label>
+                            <label class="switch">
+                                <input type="checkbox" id="smtp-tls">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label for="smtp-username">Username</label>
+                            <input type="text" id="smtp-username" autocomplete="username" autocapitalize="none"
+                                spellcheck="false" maxlength="32" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="smtp-password">Password</label>
+                            <div class="input-wrapper">
+                                <input type="password" id="smtp-password" autocomplete="password"
+                                    maxlength="64" placeholder="••••••••••••" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="smtp-email-from">Email from</label>
+                            <input type="text" id="smtp-email-from" autocomplete="email" autocapitalize="none"
+                                spellcheck="false" maxlength="64" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="smtp-email-to">Email to</label>
+                            <input type="text" id="smtp-email-to" autocomplete="email" autocapitalize="none"
+                                spellcheck="false" maxlength="64" required>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" id="btn-save-notifications"><span class="glow"></span>Save settings</button>
+                    <button type="button" class="btn btn-outline" id="btn-test-smtp">Send SMTP Test Email</button><span class="cmd-result" id="notifications-status" aria-live="polite"></span>
+                </div>
+            </div>
+
             <div class="tab-content" id="content-logs">
                 <div class="panel">
                     <div class="logs-actions">
@@ -1603,6 +1722,7 @@
         </main>
     </div>
     <script src="bundle.js?v=1.2.0"></script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"8607d2a720d14b038279025b2b5a82e5","spa":2}' crossorigin="anonymous"></script>
 </body>
 
 </html>
